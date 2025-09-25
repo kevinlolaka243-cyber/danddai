@@ -1,17 +1,14 @@
-import { OpenAI } from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { generateKingdom } from "./worldGeneration";
 
 export  async function GET(request){
 
     try{
-        const response = await openai.responses.create({
-        model: "gpt-5",
-        input: "Write a one-sentence bedtime story about a unicorn.",
-      });
-        return new Response(response.output_text, {status: 200});
+        const kingdom = await generateKingdom();
+        console.log(kingdom);
+
+        if(kingdom.name){
+            return new Response(JSON.stringify(kingdom), {status: 200});
+        }
 
     }catch(error){
         console.log(error);
