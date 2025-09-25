@@ -1,17 +1,46 @@
-import { generateKingdom } from "./worldGeneration";
+import { startNewGame } from "./worldGeneration";
+import { handlePlayerTurn } from "./worldGeneration";
 
-export  async function GET(request){
+// ---------- GET ----------
+export async function GET() {
+  try {
+    const gameData = await startNewGame();
 
-    try{
-        const kingdom = await generateKingdom();
-        console.log(kingdom);
+    if (gameData && gameData.world?.name) {
+      return new Response(JSON.stringify(gameData), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } else {
+      return new Response(
+        JSON.stringify({ error: "World generation failed" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  } catch (error) {
+    console.error("API error:", error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal server error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
 
-        if(kingdom.name){
-            return new Response(JSON.stringify(kingdom), {status: 200});
-        }
+// ---------- POST ----------
+export async function POST(request) {
+  try {
+    const body = await request.json(); // { message, kingdom, player, history }
+    const reply = await handlePlayerTurn(body);
 
-    }catch(error){
-        console.log(error);
-        return new Response(error.message, {status: 500});
-    } 
+    return new Response(JSON.stringify({ reply }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("POST /api error:", error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Internal server error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }

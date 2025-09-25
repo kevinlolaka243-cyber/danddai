@@ -225,4 +225,152 @@ Character Description: <DESCRIPTION>
   }
 }
 
+export async function gameInitialization(worldData) {
+  try {
+    if (!worldData || !Array.isArray(worldData.duchies) || !worldData.duchies.length) {
+      throw new Error("Invalid or empty world data.");
+    }
+
+    // Collect all characters with their location context
+    const pool = [];
+    for (const duchy of worldData.duchies || []) {
+      for (const town of duchy.towns || []) {
+        for (const character of town.characters || []) {
+          pool.push({
+            duchyName: duchy.name,
+            duchyDescription: duchy.description,
+            townName: town.name,
+            townDescription: town.description,
+            character, // { name, role, description }
+          });
+        }
+      }
+    }
+
+    if (!pool.length) {
+      throw new Error("No characters found in the world data.");
+    }
+
+    // Randomly select one character
+    const selected = pool[Math.floor(Math.random() * pool.length)];
+
+        // Build a short, immersive intro using the LLM
+        const system = `You are the game narrator. 
+    Respond in plain text only (no markdown).
+    Use 3–5 concise sentences.
+    Be vivid but not flowery.
+    Introduce the selected character to the player and set the opening scene.`;
+
+        const user = `World Context:
+    Kingdom: ${worldData.name}
+    Duchy: ${selected.duchyName}
+    Duchy Summary: ${selected.duchyDescription}
+
+    Town: ${selected.townName}
+    Town Summary: ${selected.townDescription}
+
+    Character:
+    Name: ${selected.character.name}
+    Role: ${selected.character.role}
+    Description: ${selected.character.description}
+
+    Task:
+    Write a brief introduction directly addressing the player, presenting this character as their first contact, and inviting them to begin the adventure from ${selected.townName}. End with a subtle call to action.`;
+
+    const intro = await ask(system, user, 300, 0.7);
+
+    return {
+      intro,
+      selection: {
+        duchy: selected.duchyName,
+        town: selected.townName,
+        character: selected.character,
+      },
+      startLocation: {
+        duchy: selected.duchyName,
+        town: selected.townName,
+      },
+    };
+  } catch (err) {
+    console.error("gameInitialization error:", err);
+    return {
+      intro:
+        "Your adventure begins, but the guide seems delayed. Take a moment to gather your thoughts—someone will meet you at the town gates shortly.",
+      selection: null,
+      startLocation: null,
+      error: String(err?.message || err),
+    };
+  }
+}
+
+// ---------- wrapper ----------
+export async function startNewGame(
+  country = "France",
+  duchyCount = 3,
+  townsPerDuchy = 3,
+  charactersPerTown = 3
+) {
+  try {
+    // Step 1: Generate the world
+    const kingdom = await generateKingdom(
+      country,
+      duchyCount,
+      townsPerDuchy,
+      charactersPerTown
+    );
+
+    // Step 2: Select starting character + intro
+    const init = await gameInitialization(kingdom);
+
+    // Step 3: Return both in one object
+    return {
+      world: kingdom,
+      player: init.selection, // selected character with context
+      intro: init.intro,      // narrator message for start
+      startLocation: init.startLocation,
+    };
+  } catch (err) {
+    console.error("startNewGame error:", err);
+    return {
+      world: null,
+      player: null,
+      intro: "The world could not be created. Please try again.",
+      startLocation: null,
+      error: String(err?.message || err),
+    };
+  }
+}
+
+export async function handlePlayerTurn({ message, kingdom, player, history }) {
+  if (!message || !message.trim()) {
+    throw new Error("Message is required");
+  }
+
+  const systemPrompt = `You are the narrator of a medieval fantasy adventure.
+Always address the player directly in the second person ("you").
+Keep narration under 4 sentences.
+Respond in plain text only.`;
+
+  const userPrompt = `World:
+Kingdom: ${kingdom?.name || "Unknown"}
+Description: ${kingdom?.description || ""}
+
+Player:
+Name: ${player?.character?.name || "Unknown"}
+Role: ${player?.character?.role || ""}
+Description: ${player?.character?.description || ""}
+Current Location: ${player?.town || ""}, ${player?.duchy || ""}
+
+Conversation so far:
+${(history || [])
+  .map(h => `${h.role === "player" ? "Player" : "Narrator"}: ${h.content}`)
+  .join("\n")}
+
+Player says: ${message}`;
+
+  return await ask(systemPrompt, userPrompt, 500, 0.7);
+}
+
+
+
 
